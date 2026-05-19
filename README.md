@@ -320,11 +320,24 @@ psql -U admin -d test_db -c "\dt"
 | `PROMETHEUS_URL` | Agent | Prometheus API URL | `http://prometheus:9090` |
 | `LOKI_URL` | Agent | Loki API URL | `http://loki:3100` |
 | `AGENT_API_URL` | Dashboard, Web | Flask agent base URL | `http://localhost:5000` |
+| `TELEGRAM_BOT_TOKEN` | Agent | Telegram BotFather token used by `/api/v1/telegram/webhook` to send AI replies | - |
 | `VITE_GOOGLE_CLIENT_ID` | Landing Page | Google OAuth Client ID | — |
 | `SECRET_KEY` | Web Flask | Session secret key | `super-secret-key-change-me` |
 | `API_KEY` | Agent auth | Simple API key | `secret-token` |
 
 > ⚠️ **Never commit `.env` files to git.** They are already in `.gitignore`.
+
+---
+
+### Telegram Webhook
+
+Set `TELEGRAM_BOT_TOKEN`, then configure your Telegram bot webhook to POST updates to:
+
+```text
+https://<your-agent-domain>/api/v1/telegram/webhook
+```
+
+Text messages and captions are forwarded to the AI agent. Photo, document, or voice updates without captions receive a helpful fallback message instead of failing silently.
 
 ---
 
