@@ -242,6 +242,46 @@ def _analyze_transaction(tx_id: int, bid: str) -> str:
     # Quick analysis logic
     return "Analysis complete. This transaction follows your monthly trend."
 
+def _run_agent_to_text(query: str, thread_id: str, business_id: str) -> str:
+    chunks: list[str] = []
+    fallback_error = None
+
+    for line in stream_agent_sse_lines(query, thread_id, business_id):
+        if not line.startswith("data: "):
+            continue
+
+        payload = line[6:].strip()
+        if not payload:
+            continue
+
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+
+        if event.get("type") == "token":
+            chunks.append(event.get("content", ""))
+        elif event.get("type") == "error":
+            fallback_error = event.get("error")
+
+    response = "".join(chunks).strip()
+    if response:
+        return response
+    if fallback_error:
+        return f"Sorry, I hit an error: {fallback_error}"
+    return "I could not generate a response."
+
+def _send_telegram_text(chat_id: int, text: str) -> None:
+    if not TELEGRAM_BOT_TOKEN:
+        logger.warning("Telegram send skipped; TELEGRAM_BOT_TOKEN is not configured.")
+        return
+
+    requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+        json={"chat_id": chat_id, "text": text[:4096]},
+        timeout=30,
+    ).raise_for_status()
+
 # --- Helper Functions (From Kushal-Dev) ---
 def get_period_dates(period):
     now = datetime.utcnow()
@@ -363,8 +403,40 @@ def whatsapp_events():
 
 @app.route("/api/v1/telegram/webhook", methods=["POST"])
 def telegram_webhook():
-    # Full logic from app_main.py simplified for merge
-    return jsonify({"ok": True})
+    try:
+        update = request.get_json(force=True) or {}
+        message = update.get("message") or update.get("edited_message") or {}
+        chat_id = (message.get("chat") or {}).get("id")
+
+        if chat_id is None:
+            return jsonify({"ok": True})
+
+        text = (message.get("text") or message.get("caption") or "").strip()
+        has_attachment = bool(message.get("photo") or message.get("document") or message.get("voice"))
+
+        if not text:
+            reply = (
+                "I received your attachment, but this Telegram webhook currently supports text prompts "
+                "and captions. Please send a question or add a caption so I can help."
+            ) if has_attachment else "Please send a text question so I can help."
+            _send_telegram_text(chat_id, reply)
+            return jsonify({"ok": True})
+
+        business_id = DEFAULT_BUSINESS_ID or "550e8400-e29b-41d4-a716-446655440000"
+        answer = _run_agent_to_text(text, f"tg-{chat_id}", business_id)
+        _send_telegram_text(chat_id, answer)
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error("Telegram webhook failed: %s", e, exc_info=True)
+        try:
+            update = request.get_json(silent=True) or {}
+            message = update.get("message") or update.get("edited_message") or {}
+            chat_id = (message.get("chat") or {}).get("id")
+            if chat_id is not None:
+                _send_telegram_text(chat_id, "Sorry, I could not process that Telegram update.")
+        except Exception:
+            pass
+        return jsonify({"error": str(e)}), 500
 
 # --- Transaction Import Endpoints ---
 

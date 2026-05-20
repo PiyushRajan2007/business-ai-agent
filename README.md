@@ -326,6 +326,7 @@ psql -U admin -d test_db -c "\dt"
 | `RATE_LIMIT_AUTH` | Agent | Signup/login quota per client IP | `5 per minute` |
 | `RATE_LIMIT_CHAT` | Agent | Chat generation quota per client IP | `10 per minute` |
 | `RATE_LIMIT_IMPORT` | Agent | Transaction import quota per client IP | `20 per hour` |
+| `TELEGRAM_BOT_TOKEN` | Agent | Telegram BotFather token used by `/api/v1/telegram/webhook` to send AI replies | - |
 | `VITE_GOOGLE_CLIENT_ID` | Landing Page | Google OAuth Client ID | — |
 | `MY_WHATSAPP_NUMBER` | WhatsApp Gateway | E.164 WhatsApp number without `+` | — |
 | `WHATSAPP_VERIFY_TOKEN` | Agent | Meta webhook verification token | — |
@@ -335,6 +336,18 @@ psql -U admin -d test_db -c "\dt"
 | `API_KEY` | Agent auth | Simple API key | `secret-token` |
 
 Copy `.env.example` to `.env`, fill private values locally, and never commit real `.env` files.
+
+---
+
+### Telegram Webhook
+
+Set `TELEGRAM_BOT_TOKEN`, then configure your Telegram bot webhook to POST updates to:
+
+```text
+https://<your-agent-domain>/api/v1/telegram/webhook
+```
+
+Text messages and captions are forwarded to the AI agent. Photo, document, or voice updates without captions receive a helpful fallback message instead of failing silently.
 
 ---
 
