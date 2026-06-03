@@ -30,22 +30,33 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = require_jwt_secret(os.getenv("JWT_SECRET"))
 CORS(app)
 
-AGENT_REQUEST_COUNT = Counter(
-    "agent_requests_total",
-    "Total requests to the agent API",
-    ["method", "endpoint", "status"],
-)
-AGENT_REQUEST_LATENCY = Histogram(
-    "agent_request_duration_seconds",
-    "Agent API request latency",
-    ["method", "endpoint"],
-    buckets=[0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120],
-)
-AGENT_INTENT_COUNT = Counter(
-    "agent_intent_detections_total",
-    "Total intent detections by type",
-    ["intent"],
-)
+if "agent_requests_total" in REGISTRY._names_to_collectors:
+    AGENT_REQUEST_COUNT = REGISTRY._names_to_collectors["agent_requests_total"]
+else:
+    AGENT_REQUEST_COUNT = Counter(
+        "agent_requests_total",
+        "Total requests to the agent API",
+        ["method", "endpoint", "status"],
+    )
+
+if "agent_request_duration_seconds" in REGISTRY._names_to_collectors:
+    AGENT_REQUEST_LATENCY = REGISTRY._names_to_collectors["agent_request_duration_seconds"]
+else:
+    AGENT_REQUEST_LATENCY = Histogram(
+        "agent_request_duration_seconds",
+        "Agent API request latency",
+        ["method", "endpoint"],
+        buckets=[0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120],
+    )
+
+if "agent_intent_detections_total" in REGISTRY._names_to_collectors:
+    AGENT_INTENT_COUNT = REGISTRY._names_to_collectors["agent_intent_detections_total"]
+else:
+    AGENT_INTENT_COUNT = Counter(
+        "agent_intent_detections_total",
+        "Total intent detections by type",
+        ["intent"],
+    )
 
 WHATSAPP_VERIFY_TOKEN = (os.getenv("WHATSAPP_VERIFY_TOKEN") or "").strip()
 WHATSAPP_ACCESS_TOKEN = (os.getenv("WHATSAPP_ACCESS_TOKEN") or "").strip()
@@ -486,7 +497,9 @@ def query_agent():
 
 @app.route("/api/v1/billing/analyze-all", methods=["POST"])
 def billing_analyze_all():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
     question = (data.get("question") or "Analyze all business billing data").strip()
     business_id = (data.get("business_id") or "").strip() or _resolve_business_id(None)
     try:
@@ -509,8 +522,11 @@ def whatsapp_verify():
 
 @app.route("/api/v1/whatsapp/webhook", methods=["POST"])
 def whatsapp_events():
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
     try:
-        payload = request.get_json(force=True) or {}
+        payload = data
         entries = payload.get("entry") or []
         for entry in entries:
             for change in entry.get("changes") or []:
@@ -561,8 +577,11 @@ def whatsapp_events():
 
 @app.route("/api/v1/telegram/webhook", methods=["POST"])
 def telegram_webhook():
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
     try:
-        update = request.get_json(force=True) or {}
+        update = data
         msg = update.get("message") or update.get("edited_message") or {}
         if not msg:
             return jsonify({"ok": True})
@@ -695,8 +714,10 @@ def get_employees():
 
 @app.route("/api/v1/escalate", methods=["POST"])
 def escalate_to_slack():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
     try:
-        data = request.get_json() or {}
         query = data.get("query", "No specific query")
         summary = data.get("summary", "No summary provided")
         from slack_integration.slack_handler import SlackDelivery
@@ -1092,9 +1113,8 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 
 load_dotenv()
 
-app = Flask(__name__)
+# Use the existing app object defined at the top of the file
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
-CORS(app)
 
 # Constants & AI Clients
 CHAT_DB_PATH = os.getenv("CHAT_DB_PATH", "chat_history.db")
@@ -1153,7 +1173,7 @@ def get_latest_business_id():
 # --- Dashboard API Endpoints ---
 
 @app.route("/api/dashboard/summary-sql", methods=["GET"])
-def api_dashboard_summary():
+def api_dashboard_summary_sql():
     period = request.args.get("period", "this_month")
     start_date, end_date = get_period_dates(period)
     bid = get_latest_business_id()
@@ -1247,7 +1267,9 @@ def api_forecast():
 
 @app.route("/api/v1/onboarding", methods=["POST"])
 def onboarding():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
     business_name = data.get("business_name")
     email = data.get("email", "").lower().strip()
     if not business_name or not email: return jsonify({"error": "Missing fields"}), 400
@@ -1276,7 +1298,9 @@ def iter_query_sse(input_query, thread_id):
 
 @app.route("/api/chat/send", methods=["POST"])
 def api_chat_send():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
     conv_id = data.get("conversation_id")
     msg = data.get("message")
     # Wrap iter_query_sse in SSE Response
