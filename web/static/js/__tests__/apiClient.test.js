@@ -3,6 +3,8 @@
  * Unit tests for API client functions
  */
 
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
+import assert from "node:assert/strict";
 import {
   fetchJSON,
   fetchKPISummary,
@@ -16,116 +18,126 @@ import {
   fetchEmployeeStats,
 } from "../apiClient.js";
 
-// Mock fetch for testing
-global.fetch = jest.fn();
-
 describe("apiClient", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = mock.fn();
+    mock.method(console, "error", () => {});
   });
 
   afterEach(() => {
-    console.error.mockRestore();
+    mock.restoreAll();
+    delete globalThis.fetch;
   });
 
   describe("fetchJSON function", () => {
     it("should fetch and parse JSON successfully", async () => {
       const mockData = { success: true, value: 123 };
-      global.fetch.mockResolvedValueOnce({
+      globalThis.fetch = mock.fn(async () => ({
         ok: true,
         json: async () => mockData,
-      });
+      }));
 
       const result = await fetchJSON("/api/test");
 
-      expect(global.fetch).toHaveBeenCalledWith("/api/test");
-      expect(result).toEqual(mockData);
+      assert.deepEqual(globalThis.fetch.mock.calls[0].arguments, ["/api/test"]);
+      assert.deepEqual(result, mockData);
     });
 
     it("should return null on fetch error", async () => {
-      global.fetch.mockRejectedValueOnce(new Error("Network error"));
-
-      const result = await fetchJSON("/api/test");
-
-      expect(result).toBeNull();
-      expect(console.error).toHaveBeenCalled();
-    });
-
-    it("should return null on non-200 status", async () => {
-      global.fetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
+      globalThis.fetch = mock.fn(async () => {
+        throw new Error("Network error");
       });
 
       const result = await fetchJSON("/api/test");
 
-      expect(result).toBeNull();
-      expect(console.error).toHaveBeenCalled();
+      assert.equal(result, null);
+      assert.equal(console.error.mock.calls.length, 1);
+    });
+
+    it("should return null on non-200 status", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: false,
+        status: 404,
+      }));
+
+      const result = await fetchJSON("/api/test");
+
+      assert.equal(result, null);
+      assert.equal(console.error.mock.calls.length, 1);
     });
 
     it("should return null on invalid JSON response", async () => {
-      global.fetch.mockResolvedValueOnce({
+      globalThis.fetch = mock.fn(async () => ({
         ok: true,
         json: async () => {
           throw new Error("Invalid JSON");
         },
-      });
+      }));
 
       const result = await fetchJSON("/api/test");
 
-      expect(result).toBeNull();
-      expect(console.error).toHaveBeenCalled();
+      assert.equal(result, null);
+      assert.equal(console.error.mock.calls.length, 1);
     });
   });
 
   describe("Specific API endpoint functions", () => {
     it("should call fetchJSON with correct endpoints", async () => {
-      global.fetch.mockResolvedValue({
+      globalThis.fetch = mock.fn(async () => ({
         ok: true,
         json: async () => ({}),
-      });
+      }));
 
       await fetchKPISummary();
-      expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/summary");
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
+        "/api/dashboard/summary",
+      ]);
 
       await fetchRevenueExpense();
-      expect(global.fetch).toHaveBeenCalledWith(
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
         "/api/dashboard/revenue-vs-expense",
-      );
+      ]);
 
       await fetchTransactionsByCategory();
-      expect(global.fetch).toHaveBeenCalledWith(
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
         "/api/dashboard/transactions-by-category",
-      );
+      ]);
 
       await fetchSalesTrend();
-      expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/sales-trend");
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
+        "/api/dashboard/sales-trend",
+      ]);
 
       await fetchAlertsBySeverity();
-      expect(global.fetch).toHaveBeenCalledWith(
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
         "/api/dashboard/alerts-by-severity",
-      );
+      ]);
 
       await fetchFinancialOverview();
-      expect(global.fetch).toHaveBeenCalledWith(
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
         "/api/dashboard/financial-overview",
-      );
+      ]);
 
       await fetchTopProducts();
-      expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/top-products");
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
+        "/api/dashboard/top-products",
+      ]);
 
       await fetchHealthScores();
-      expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/health-scores");
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
+        "/api/dashboard/health-scores",
+      ]);
 
       await fetchEmployeeStats();
-      expect(global.fetch).toHaveBeenCalledWith(
+      assert.deepEqual(globalThis.fetch.mock.calls.at(-1).arguments, [
         "/api/dashboard/employee-stats",
-      );
+      ]);
     });
 
     it("should return null when endpoints fail", async () => {
-      global.fetch.mockRejectedValue(new Error("Network error"));
+      globalThis.fetch = mock.fn(async () => {
+        throw new Error("Network error");
+      });
 
       const results = await Promise.all([
         fetchKPISummary(),
@@ -140,7 +152,7 @@ describe("apiClient", () => {
       ]);
 
       results.forEach((result) => {
-        expect(result).toBeNull();
+        assert.equal(result, null);
       });
     });
   });
